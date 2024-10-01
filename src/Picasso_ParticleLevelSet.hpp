@@ -95,30 +95,23 @@ struct ParticleLevelSetPredicateData
 // Query callback. When the query occurs we store the distance to the closest
 // point. We don't use the tree graph so we don't insert anything into the
 // graph.
-template <class CoordinateSlice, class DistanceEstimateView>
+template <class DistanceEstimateView>
 struct ParticleLevelSetCallback
 {
-    ParticleLevelSetPrimitiveData<
-        CoordinateSlice,
-        Kokkos::View<int*, typename CoordinateSlice::memory_space>>
-        primitive_data;
     DistanceEstimateView distance_estimate;
     float radius;
 
-    template <typename Predicate>
+    template <typename Predicate, typename Point>
     KOKKOS_FUNCTION void operator()( Predicate const& predicate,
-                                     int primitive_index ) const
+                                     Point const& point ) const
     {
-        // Get the actual index of the particle.
-        auto p = primitive_data.c( primitive_index );
-
         // Get the predicate storage.
         auto storage = getData( predicate );
 
         // Compute the distance from the grid entity to the particle sphere.
-        float dx = static_cast<float>( primitive_data.x( p, 0 ) ) - storage.x;
-        float dy = static_cast<float>( primitive_data.x( p, 1 ) ) - storage.y;
-        float dz = static_cast<float>( primitive_data.x( p, 2 ) ) - storage.z;
+        float dx = static_cast<float>( point[0] ) - storage.x;
+        float dy = static_cast<float>( point[1] ) - storage.y;
+        float dz = static_cast<float>( point[2] ) - storage.z;
         distance_estimate( storage.i, storage.j, storage.k, 0 ) =
             sqrt( dx * dx + dy * dy + dz * dz ) - radius;
     }
@@ -146,15 +139,15 @@ struct AccessTraits<
     {
         return data.num_color;
     }
-    static KOKKOS_FUNCTION Point get( const primitive_data& data, size_type i )
+    static KOKKOS_FUNCTION auto get( const primitive_data& data, size_type i )
     {
         // Get the actual index of the particle.
         auto p = data.c( i );
 
         // Return a point made from the particles.
-        return { static_cast<float>( data.x( p, 0 ) ),
-                 static_cast<float>( data.x( p, 1 ) ),
-                 static_cast<float>( data.x( p, 2 ) ) };
+        return ArborX::Point{ static_cast<float>( data.x( p, 0 ) ),
+                              static_cast<float>( data.x( p, 1 ) ),
+                              static_cast<float>( data.x( p, 2 ) ) };
     }
 };
 
@@ -366,19 +359,16 @@ class ParticleLevelSet
             primitive_data.x = x_p;
             primitive_data.c = _color_indices;
             primitive_data.num_color = _color_count;
-            ArborX::BVH<memory_space> bvh( exec_space, primitive_data );
+            ArborX::BoundingVolumeHierarchy bvh( exec_space, primitive_data );
 
             // Make the search predicates.
             ParticleLevelSetPredicateData<decltype( local_mesh ), entity_type>
                 predicate_data( local_mesh, *local_grid );
 
             // Make the distance callback.
-            ParticleLevelSetCallback<ParticlePositions,
-                                     decltype( estimate_view )>
-                distance_callback;
-            distance_callback.primitive_data = primitive_data;
-            distance_callback.distance_estimate = estimate_view;
-            distance_callback.radius = static_cast<float>( _radius );
+            ParticleLevelSetCallback<decltype( estimate_view )>
+                distance_callback{ estimate_view,
+                                   static_cast<float>( _radius ) };
 
             // Query the particle tree with the mesh entities to find the
             // closest particle and compute the initial signed distance
