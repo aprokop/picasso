@@ -33,10 +33,10 @@ if(NOT NLOHMANN_JSON_FOUND)
 endif()
 
 # Build with ArborX if available or if requested.
-find_package(ArborX QUIET)
+find_package(ArborX 2.0 QUIET)
 if(Picasso_REQUIRE_ARBORX OR ArborX_FOUND)
   set(Picasso_ENABLE_ARBORX ON)
-  find_package(ArborX REQUIRED)
+  find_package(ArborX 2.0 REQUIRED)
 endif()
 
 option( Picasso_REQUIRE_SILO "Require Picasso to build with Cabana Silo support" OFF )
